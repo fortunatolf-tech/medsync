@@ -1,0 +1,71 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, staging ]
+  pull_request:
+    branches: [ main, staging ]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup PHP 7.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.3'
+          tools: phpunit
+      - name: Install Dependencies
+        run: cd backend && composer install
+      - name: Check PSR-12
+        run: cd backend && vendor/bin/phpcs --standard=PSR12 src/
+      - name: Run PHPUnit
+        run: cd backend && vendor/bin/phpunit --coverage-text
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install Dependencies
+        run: cd frontend && npm install
+      - name: Lint (ESLint & Prettier)
+        run: cd frontend && npm run lint
+      - name: Run Jest
+        run: cd frontend && npm test -- --coverage
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'my-app:latest'
+          format: 'table'
+
+  build-and-deploy-staging:
+    needs: [backend-test, frontend-test, security-scan]
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Docker Compose (Staging)
+        run: docker-compose -f docker-compose.yml build
+      - name: Deploy to Staging
+        run: echo "Deploying to Staging Env..."
+
+  build-and-deploy-prod:
+    needs: [backend-test, frontend-test, security-scan]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Docker Compose (Prod)
+        run: docker-compose -f docker-compose.yml build
+      - name: Deploy to Prod
+        run: echo "Deploying to Production Env..."
